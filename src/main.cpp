@@ -5,6 +5,10 @@
 #include <Adafruit_ADS1X15.h>
 #include <SPI.h>
 #include "sensesp/signalk/signalk_output.h"
+#include "sensesp/transforms/analogvoltage.h"
+#include "sensesp/transforms/lambda_transform.h"
+#include "sensesp/transforms/moving_average.h"
+#include "sensesp/transforms/linear.h"
 #include "sensesp_app_builder.h"
 
 #define SDA 21
@@ -16,41 +20,7 @@ reactesp::ReactESP app;
 
 Adafruit_ADS1115 ads;
 
-unsigned long delayTime = 1000;
-
-SKOutput<float>* ac_amp_output;
-
-const float FACTOR = 20; //20A/1V from teh CT
-
-const float multiplier = 0.00005;
-
-float getcurrent()
-{
-  float voltage;
-  float current;
-  float sum = 0;
-  long time_check = millis() + 1000;
-  int counter = 0;
-
-  while (millis() < time_check)
-  {
-    voltage = ads.readADC_Differential_0_1() * multiplier;
-    current = voltage * FACTOR;
-    //current /= 1000.0;
-
-    sum += sq(current);
-    counter = counter + 1;
-  }
-
-  Serial.printf("counter = %d", counter);
-  return (current);
-}
-
-void printValues()
-{
-  float currentRMS = getcurrent();
-  ac_amp_output->set_input(currentRMS);
-}
+const float FACTOR = 30; //30A/1V from the CT
 
 void setup() {
   Serial.begin(115200);
@@ -68,10 +38,27 @@ void setup() {
   ads.setGain(GAIN_FOUR);      // +/- 1.024V 1bit = 0.5mV
   ads.begin();  
 
-  ac_amp_output = new SKOutput<float>(
-    "ac.current.amps",
-    "/sensors/ADS1151/ac",
-    new SKMetadata("A", "AC Amps")
+  auto* analog_input_ads_01 = new RepeatSensor<float>(
+    5, [](){ return ads.computeVolts(ads.readADC_Differential_0_1()) * FACTOR; });
+
+  analog_input_ads_01
+  ->connect_to(new LambdaTransform<float, float>([](float v){ return sq(v); }))
+  ->connect_to(new MovingAverage(100))
+  ->connect_to(new LambdaTransform<float, float>([](float v){ return sqrt(v); }))
+  ->connect_to(
+    new SKOutput<float>(
+      "ac.current.amps",
+      "/sensors/ADS1151/amps",
+      new SKMetadata("A", "AC Amps")
+    )
+  )
+  ->connect_to(new Linear(240.0, 0.0))
+  ->connect_to(
+    new SKOutput<float>(
+      "ac.power.watts",
+      "/sensors/ADS1151/watts",
+      new SKMetadata("W", "AC Watts")
+    )
   );
 
   sensesp_app->start();
@@ -79,12 +66,5 @@ void setup() {
 }
 
 void loop() {
-  static unsigned long last_run = millis();
-
-  if (millis() - last_run >= delayTime) {
-    printValues();
-    last_run = millis();
-  }
-
   app.tick();
 }
