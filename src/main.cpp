@@ -1,4 +1,4 @@
-// Code as of May 2024
+// Adapted from code as of May 2024
 //boating with the baileys
 
 #include <Wire.h>
@@ -29,7 +29,7 @@ void setup() {
 
   SensESPAppBuilder builder;
   sensesp_app = (&builder)
-                    ->set_hostname("sensesp-AC_monitor")
+                    ->set_hostname("SensESP Power Monitor")
                     ->get_app();
 
 
@@ -47,7 +47,7 @@ void setup() {
   ->connect_to(new LambdaTransform<float, float>([](float v){ return sqrt(v); }))
   ->connect_to(
     new SKOutput<float>(
-      "ac.current.amps",
+      "electrical.ac.0.phase.single.current",
       "/sensors/ADS1151/amps",
       new SKMetadata("A", "AC Amps")
     )
@@ -55,7 +55,7 @@ void setup() {
   ->connect_to(new Linear(240.0, 0.0))
   ->connect_to(
     new SKOutput<float>(
-      "ac.power.watts",
+      "electrical.ac.0.phase.single.apparentPower",
       "/sensors/ADS1151/watts",
       new SKMetadata("W", "AC Watts")
     )
